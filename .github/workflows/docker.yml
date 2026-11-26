@@ -16,20 +16,30 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  docker:
-    name: Build / Push
-    runs-on: ubuntu-26.04
+  build:
+    name: Build (${{ matrix.arch }})
+    runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 30
 
     permissions:
       contents: read
       packages: write
 
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runs-on: ubuntu-26.04
+          - arch: arm64
+            runs-on: ubuntu-26.04-arm
+
     env:
       # Fork and Dependabot PRs get a read-only token, so they build without pushing.
       PUSH: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]') }}
-      # The daily cron, or a manual run on the default branch, publishes the release tags.
-      RELEASE: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) }}
+
+    outputs:
+      push: ${{ env.PUSH }}
 
     steps:
       - name: Checkout code
@@ -37,8 +47,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: QEMU setup
-        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - name: Image name
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
       - name: Docker Buildx setup
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -54,8 +65,72 @@ jobs:
       - name: Docker Metadata
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ steps.image.outputs.name }}
+
+      # Pushed untagged; the combine job merges the digests into one multi-arch image.
+      # No layer cache and a fresh base image pull, so every build installs the latest release.
+      - name: Docker Build
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          pull: true
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ steps.image.outputs.name }},push-by-digest=true,name-canonical=true,push=${{ env.PUSH }}
+
+      - name: Export digest
+        if: env.PUSH == 'true'
         env:
-          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |-
+          mkdir -p "${RUNNER_TEMP}/digests"
+          touch "${RUNNER_TEMP}/digests/${DIGEST#sha256:}"
+
+      - name: Upload digest
+        if: env.PUSH == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digests-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  combine:
+    name: Combine
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    needs: build
+    if: needs.build.outputs.push == 'true'
+
+    permissions:
+      packages: write
+
+    env:
+      # The daily cron, or a manual run on the default branch, publishes the release tags.
+      RELEASE: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) }}
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: GHCR Login
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Docker Metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: index
           DOCKER_METADATA_PR_HEAD_SHA: true
         with:
           images: ghcr.io/${{ github.repository }}
@@ -70,15 +145,19 @@ jobs:
             type=ref,event=pr
             type=ref,event=pr,suffix=-{{sha}}
 
-      # No layer cache and a fresh base image pull, so every build installs the latest release.
-      # Manual runs on other branches produce no tags, so they build without pushing.
-      - name: Docker Build / Push
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          pull: true
-          push: ${{ env.PUSH == 'true' && steps.meta.outputs.tags != '' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          annotations: ${{ steps.meta.outputs.annotations }}
+      # Manual runs on other branches produce no tags; GHCR Cleanup deletes their untagged images.
+      - name: Docker Manifest
+        if: steps.meta.outputs.tags != ''
+        working-directory: ${{ runner.temp }}/digests
+        run: |-
+          set -euo pipefail
+          mapfile -t tags < <(jq -r '.tags[] | "--tag=" + .' <<<"$DOCKER_METADATA_OUTPUT_JSON")
+          mapfile -t annotations < <(jq -r '.annotations[] | "--annotation=" + .' <<<"$DOCKER_METADATA_OUTPUT_JSON")
+          mapfile -t sources < <(printf "ghcr.io/${GITHUB_REPOSITORY,,}@sha256:%s\n" *)
+          docker buildx imagetools create "${tags[@]}" "${annotations[@]}" "${sources[@]}"
+
+      - name: Inspect image
+        if: steps.meta.outputs.tags != ''
+        env:
+          IMAGE: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
+        run: docker buildx imagetools inspect "${IMAGE}"
