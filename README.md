@@ -60,7 +60,7 @@ The CLI container shares the emulator's network (`network_mode: service:aws-emul
 While the emulator runs, copy its credentials and certificate out of the container:
 
 ```bash
-docker compose cp aws-emulator:/home/emulator/.aws/emulator/9297 ./emulator
+docker compose cp aws-emulator:/home/emulator/.aws/emulator/9297/. ./emulator
 ```
 
 Then set the environment variables from [Pointing your AWS SDK at AWS Emulator](https://docs.aws.amazon.com/emulator/latest/userguide/point-sdk-to-emulator.html) to the copied files:
