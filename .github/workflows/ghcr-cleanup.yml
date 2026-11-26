@@ -1,0 +1,41 @@
+name: GHCR Cleanup
+
+# Prune pr-* tags older than 7 days, and untagged images.
+
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Dry run: log deletions without removing anything"
+        required: false
+        default: false
+        type: boolean
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: Prune old images
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # Owner and package default to this repository.
+      - name: Prune pr-* tags older than 7 days
+        uses: dataaxiom/ghcr-cleanup-action@ac45a8c04b1eb4b27974ca79a0a74f344c93664b # v1.3.0
+        with:
+          older-than: 7 days
+          delete-tags: pr-*
+          delete-untagged: true
+          validate: true
+          dry-run: ${{ github.event.inputs.dry-run || 'false' }}
