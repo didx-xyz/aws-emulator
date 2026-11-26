@@ -29,7 +29,7 @@ jobs:
       # Fork and Dependabot PRs get a read-only token, so they build without pushing.
       PUSH: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]') }}
       # The daily cron, or a manual run on the default branch, publishes the release tags.
-      RELEASE: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref_name == github.event.repository.default_branch) }}
+      RELEASE: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) }}
 
     steps:
       - name: Checkout code
