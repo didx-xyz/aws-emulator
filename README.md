@@ -17,8 +17,10 @@ The image is `ghcr.io/didx-xyz/aws-emulator`.
 | ------------------------- | ------------------------------------------------ |
 | `latest`                  | Latest build from `master` or the daily rebuild. |
 | `lts`                     | Same build as `latest`.                          |
-| `YYYYMMDD`                | Build date, for example `20261126`.              |
+| `YYYYMMDD`                | Daily rebuild date, for example `20261126`.      |
 | `lts-YYYYMMDD`            | Same build as `YYYYMMDD`.                        |
+| `master`                  | Latest push to `master`.                         |
+| `master-<short sha>`      | Build of one commit pushed to `master`.          |
 | `pr-<number>`             | Latest build of a pull request.                  |
 | `pr-<number>-<short sha>` | Build of one commit in a pull request.           |
 

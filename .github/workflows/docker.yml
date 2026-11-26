@@ -61,8 +61,10 @@ jobs:
           tags: |-
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=lts,enable={{is_default_branch}}
-            type=raw,value={{date 'YYYYMMDD'}},enable={{is_default_branch}}
-            type=raw,value=lts-{{date 'YYYYMMDD'}},enable={{is_default_branch}}
+            type=raw,value={{date 'YYYYMMDD'}},enable=${{ github.event_name == 'schedule' }}
+            type=raw,value=lts-{{date 'YYYYMMDD'}},enable=${{ github.event_name == 'schedule' }}
+            type=ref,event=branch,enable=${{ github.event_name == 'push' }}
+            type=ref,event=branch,suffix=-{{sha}},enable=${{ github.event_name == 'push' }}
             type=ref,event=pr
             type=ref,event=pr,suffix=-{{sha}}
 
