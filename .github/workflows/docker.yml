@@ -28,6 +28,8 @@ jobs:
     env:
       # Fork and Dependabot PRs get a read-only token, so they build without pushing.
       PUSH: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]') }}
+      # The daily cron, or a manual run on the default branch, publishes the release tags.
+      RELEASE: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref_name == github.event.repository.default_branch) }}
 
     steps:
       - name: Checkout code
@@ -59,17 +61,17 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           flavor: latest=false
           tags: |-
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=lts,enable={{is_default_branch}}
-            type=raw,value={{date 'YYYYMMDD'}},enable=${{ github.event_name == 'schedule' }}
-            type=raw,value=lts-{{date 'YYYYMMDD'}},enable=${{ github.event_name == 'schedule' }}
+            type=raw,value=latest,enable=${{ env.RELEASE }}
+            type=raw,value=lts,enable=${{ env.RELEASE }}
+            type=raw,value={{date 'YYYYMMDD'}},enable=${{ env.RELEASE }}
+            type=raw,value=lts-{{date 'YYYYMMDD'}},enable=${{ env.RELEASE }}
             type=ref,event=branch,enable=${{ github.event_name == 'push' }}
             type=ref,event=branch,suffix=-{{sha}},enable=${{ github.event_name == 'push' }}
             type=ref,event=pr
             type=ref,event=pr,suffix=-{{sha}}
 
       # No layer cache and a fresh base image pull, so every build installs the latest release.
-      # Non-default branch dispatches produce no tags, so they build without pushing.
+      # Manual runs on other branches produce no tags, so they build without pushing.
       - name: Docker Build / Push
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:

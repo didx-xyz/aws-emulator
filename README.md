@@ -15,9 +15,9 @@ The image is `ghcr.io/didx-xyz/aws-emulator`.
 
 | Tag                       | Meaning                                          |
 | ------------------------- | ------------------------------------------------ |
-| `latest`                  | Latest build from `master` or the daily rebuild. |
+| `latest`                  | Latest daily or manual rebuild.                  |
 | `lts`                     | Same build as `latest`.                          |
-| `YYYYMMDD`                | Daily rebuild date, for example `20261126`.      |
+| `YYYYMMDD`                | Rebuild date, for example `20261126`.            |
 | `lts-YYYYMMDD`            | Same build as `YYYYMMDD`.                        |
 | `master`                  | Latest push to `master`.                         |
 | `master-<short sha>`      | Build of one commit pushed to `master`.          |
