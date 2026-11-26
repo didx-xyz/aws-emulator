@@ -24,11 +24,7 @@ The image is `ghcr.io/didx-xyz/aws-emulator`.
 | `pr-<number>`             | Latest build of a pull request.                  |
 | `pr-<number>-<short sha>` | Build of one commit in a pull request.           |
 
-Each architecture builds natively on its own runner (`ubuntu-26.04`, `ubuntu-26.04-arm`) and pushes an untagged image. A combine job then merges both digests into one multi-arch image under the tags above.
-
-A scheduled run rebuilds the image every day at 04:00 UTC and installs the latest LTS RPM from AWS. Pushes to `master` also publish. The GHCR Cleanup workflow deletes `pr-*` tags 7 days after push, and removes untagged images.
-
-Pull requests from forks and from Dependabot build the image but do not push it.
+The image rebuilds every day at 04:00 UTC with the latest LTS release from AWS. `pr-*` tags are deleted 7 days after push.
 
 ## Quick start
 
